@@ -53,9 +53,9 @@ class CaptumVisualizer:
         self.tokenizer = tokenizer
 
     def add_attributions_to_visualizer(self, attributions, text, pred_prob, pred, label, target, delta, vis_data_records):
-        attributions = attributions.sum(dim=2).squeeze(0)
-        attributions = attributions / torch.norm(attributions)
-        attributions = attributions.cpu().detach().numpy()
+        # attributions = attributions.sum(dim=2).squeeze(0)
+        # attributions = attributions / torch.norm(attributions)
+        # attributions = attributions.cpu().detach().numpy()
 
         text = [self.tokenizer.decode(i) for i in text[0]]
 
@@ -79,11 +79,12 @@ class CaptumVisualizer:
         for i in range(len(text)):
             if text[i] not in ['<s>', '<pad>', '</s>']:
                 keep_id.append(i)
+
         attributions = np.array([attributions[i] for i in keep_id])
-        
-        print(f"attributions: {attributions}")
-        
+
         text = [text[i] for i in keep_id]
+
+        print(f"attributions: {attributions} \n text: {text}")
         vis_data_records.append(
             VisualizationDataRecord(
                 attributions,

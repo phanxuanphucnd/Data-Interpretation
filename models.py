@@ -26,17 +26,17 @@ class MLP(nn.Module):
 class RobertaMLP(nn.Module):
     def __init__(self, num_labels, bert_path, drop_out=0.3):
         super().__init__()
-        self.model = AutoModel.from_pretrained(bert_path)
+        self.encoder = AutoModel.from_pretrained(bert_path)
 
         self.mlp = MLP(
             num_labels=num_labels, 
             dropout=drop_out, 
-            hidden_size=self.model.config.hidden_size
+            hidden_size=self.encoder.config.hidden_size
         )
         # self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, input_ids, attention_mask):
-        x = self.model(input_ids, attention_mask).last_hidden_state.mean(dim=-2)
+        x = self.encoder(input_ids, attention_mask).last_hidden_state.mean(dim=-2)
         x = self.mlp(x)
 
         return x

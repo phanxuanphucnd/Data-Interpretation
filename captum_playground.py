@@ -22,7 +22,7 @@ from captum.attr import (
 from models import RobertaMLP
 from utils import max_sublists
 from constants import ID2LABEL, LABEL2ID
-
+from visualize import CaptumVisualizer
 
 methods_register = {
     'LayerIntergratedGradients': ['lig', 'LayerIntergratedGradients', 'Layer Intergrated Gradients'],
@@ -34,20 +34,21 @@ methods_register = {
 
 class CaptumInterpreter(object):
     def __init__(
-        self, 
-        method, 
-        model_path, 
-        pretrained_name_or_path, 
-        tokenizer_path, 
-        device,
-        **kwargs
+            self,
+            method,
+            model_path,
+            pretrained_name_or_path,
+            tokenizer_path,
+            device,
+            is_visualize: bool=False,
+            **kwargs
     ) -> None:
         self.method = method
-        
-        self.model = RobertaMLP(bert_path=pretrained_name_or_path)
-        self.model.load_state_dict(torch.load(model_path))
+
+        self.model = RobertaMLP(num_labels=2, bert_path=pretrained_name_or_path)
+        self.model.mlp.load_state_dict(torch.load(model_path))
         self.model.eval()
-        
+
         self.tokenizer = RobertaTokenizerFast(
             f"{tokenizer_path}/vocab.json",
             f"{tokenizer_path}/merges.txt",
@@ -55,13 +56,13 @@ class CaptumInterpreter(object):
         self.token_reference = TokenReferenceBase(reference_token_idx=self.tokenizer.pad_token_id)
 
         if method in methods_register['LayerIntergratedGradients']:
-            self.interpreter = LayerIntegratedGradients(self.model, self.model.model.embeddings)
+            self.interpreter = LayerIntegratedGradients(self.model, self.model.encoder.embeddings)
         elif method in methods_register['LayerDeepLift']:
-            self.interpreter = LayerDeepLift(self.model, self.model.model.embeddings)
+            self.interpreter = LayerDeepLift(self.model, self.model.encoder.embeddings)
         elif method in methods_register['LayerGradientXActivation']:
-            self.interpreter = LayerGradientXActivation(self.model, self.model.model.embeddings)
+            self.interpreter = LayerGradientXActivation(self.model, self.model.encoder.embeddings)
         elif method in methods_register['LayerFeatureAblation']:
-            self.interpreter = LayerFeatureAblation(self.model, self.model.model.embeddings)
+            self.interpreter = LayerFeatureAblation(self.model, self.model.encoder.embeddings)
         else:
             raise ValueError(
                 f"The `method`=`{method}` dont supported !"
@@ -73,7 +74,12 @@ class CaptumInterpreter(object):
         else:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    def interpret_sample(self, text, max_length: int=200, label: int=0, target: int=0):
+        self.captum_visualizer = None
+        if is_visualize:
+            self.visual_data_record = []
+            self.captum_visualizer = CaptumVisualizer(tokenizer=self.tokenizer)
+
+    def interpret_sample(self, text, max_length: int = 200, label: int = 0, target: int = 0):
         self.model.zero_grad()
         self.model.to(self.device)
 
@@ -81,38 +87,56 @@ class CaptumInterpreter(object):
         input_indices = torch.tensor(input['input_ids']).unsqueeze(0).to(self.device)
         attention_mask = torch.tensor(input['attention_mask']).unsqueeze(0).to(self.device)
 
-        #TODO: predict
+        # TODO: predict
         pred = self.model(input_indices, attention_mask)
         pred_prob = nn.functional.softmax(pred, dim=-1)
         pred = torch.argmax(pred_prob, dim=-1).item()
         pred_prob = pred_prob[0][pred].item()
+        rtext = input_indices
 
-        #TODO: generate reference indices for each sample
+        # TODO: generate reference indices for each sample
         reference_indices = self.token_reference.generate_reference(
-            len(input_indices[0]), 
+            len(input_indices[0]),
             device=self.device).unsqueeze(0)
 
-        #TODO: compute attributions and approximation delta using layer integrated gradients
-        attribution, delta = self.interpreter.attribute(
-            inputs=input_indices,
-            base_lines=reference_indices,
-            target=target,
-            additional_forward_args=attention_mask,
-            n_steps=100,
-            return_convergence_delta=True,
-        )
+        # TODO: compute attributions and approximation delta using layer integrated gradients
+        if self.method in methods_register['LayerIntergratedGradients']:
+            attribution, delta = self.interpreter.attribute(
+                inputs=input_indices,
+                baselines=reference_indices,
+                target=target,
+                additional_forward_args=attention_mask,
+                n_steps=100,
+                return_convergence_delta=True,
+            )
+        else:
+            attribution, delta = self.interpreter.attribute(
+                inputs=input_indices,
+                baselines=reference_indices,
+                target=target,
+                additional_forward_args=attention_mask,
+                return_convergence_delta=True,
+            )
 
         attribution = attribution.sum(dim=2).squeeze(0)
         attribution = attribution / torch.norm(attribution)
         attribution = attribution.cpu().detach().numpy()
 
-        return list(attribution), delta
+        rattribution = []
+        for i in range(len(attribution)):
+            if input_indices[0][i] not in [self.tokenizer.pad_token_id, self.tokenizer.bos_token_id, self.tokenizer.eos_token_id]:
+                rattribution.append(attribution[i])
+
+        if self.captum_visualizer:
+            return attribution, delta, pred_prob, pred, rtext
+        else:
+            return rattribution, delta
 
     def get_label(self, instance):
         tags = instance['tags']
 
         if not tags:
-            return 'NEGATIVE'
+            return 'NEGATIVE', []
 
         count_dict = {
             'NEGATIVE': 0,
@@ -144,7 +168,6 @@ class CaptumInterpreter(object):
             label, term = self.get_label(sent)
             text = sent['content'].lower()
             term = [t.lower() for t in term]
-            
             texts.append(text)
             terms.append(term)
 
@@ -152,20 +175,60 @@ class CaptumInterpreter(object):
                 text=text,
                 max_length=200,
                 label=label,
-                target=1
+                target=LABEL2ID[label],
             )
             attributions.append(interpreted_sample[0])
             deltas.append(interpreted_sample[1])
 
+        for i in range(len(attributions)):
+            print(f"attributions: {attributions}\n")
+            print(f"texts: {texts}\n")
+
         return (attributions, deltas), texts, terms
 
-    def get_text_from_interpreted(self, attributions, deltas, texts):
-        
+    def get_text_from_interpreted(self, attributions, deltas, texts, threshold: float = 0.4):
+        text_spans = []
+        idx_spans = []
 
-    def calculate_scores(self, attributions, deltas, texts, terms, threshold: float=0.4):
+        for i in range(len(attributions)):
+            tmp_span = []
+            pattern_found = []
+            tmp_texts = texts[i].split()
+            for j in range(len(attributions[i])):
+                if attributions[i][j] >= threshold:
+                    pattern_found.append(j)
+                elif len(pattern_found) != 0:
+                    tmp_span.append((pattern_found[0], pattern_found[-1]))
+                    pattern_found = []
+
+            if len(pattern_found) != 0:
+                tmp_span.append((pattern_found[0], len(attributions[i]) - 1))
+
+            idx_spans.append(tmp_span)
+
+        return idx_spans
+
+    def calculate_scores(self, attributions, deltas, texts, terms, threshold: float = 0.4):
         scores = []
 
+        truth_labels = self.get_text_from_interpreted(attributions, deltas, texts, threshold)
 
+        print(truth_labels)
+
+        return []
+
+    def visualize_samples(self, text, max_length: int = 200, label: int = 0, target: int = 0):
+        if isinstance(text, list):
+            for i in range(len(text)):
+                attribution, delta, pred_prob, pred, rtext = self.interpret_sample(text[i], max_length, label[i], target[i])
+                self.captum_visualizer.add_attributions_to_visualizer(
+                    attribution, rtext, pred_prob, pred, label[i], target[i], delta, self.visual_data_record)
+        else:
+            attribution, delta, pred_prob, pred, rtext = self.interpret_sample(text, max_length, label, target)
+            self.captum_visualizer.add_attributions_to_visualizer(
+                attribution, rtext, pred_prob, pred, label, target, delta, self.visual_data_record)
+
+        self.captum_visualizer.visualize_text(self.visual_data_record)
 
 
 
@@ -176,6 +239,24 @@ if __name__ == '__main__':
                         help='Type of explanations algorithm')
     parser.add_argument('--device', default='cpu', type=str,
                         help='Device')
-    
+
     args = parser.parse_args()
+
+    captum_interpreter = CaptumInterpreter(
+        method='LayerDeepLift',
+        model_path='models/polarity.pt',
+        pretrained_name_or_path='models/bdi-roberta',
+        tokenizer_path='models/bdi-tokenizer',
+        device='cpu'
+    )
+
+    (attributions, deltas), texts, terms = captum_interpreter.interpret_from_json(json_path='data/test_sa_mb.json')
+
+    score = captum_interpreter.calculate_scores(
+        attributions=attributions,
+        deltas=deltas,
+        texts=texts,
+        terms=terms,
+        threshold=0.2
+    )
 
