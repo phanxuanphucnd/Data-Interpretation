@@ -107,10 +107,10 @@ class CaptumInterpreter(object):
                 baselines=reference_indices,
                 target=target,
                 additional_forward_args=attention_mask,
-                n_steps=1000,
+                n_steps=100,
                 return_convergence_delta=True,
             )
-        else:
+        elif self.method in methods_register['LayerDeepLift']:
             attribution, delta = self.interpreter.attribute(
                 inputs=input_indices,
                 baselines=reference_indices,
@@ -118,6 +118,14 @@ class CaptumInterpreter(object):
                 additional_forward_args=attention_mask,
                 return_convergence_delta=True,
             )
+        else:
+            attribution = self.interpreter.attribute(
+                inputs=input_indices,
+                target=target,
+                additional_forward_args=attention_mask
+            )
+            delta = None
+
 
         attribution = attribution.sum(dim=2).squeeze(0)
         attribution = attribution / torch.norm(attribution)
