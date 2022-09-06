@@ -106,7 +106,7 @@ class CaptumInterpreter(object):
                 baselines=reference_indices,
                 target=target,
                 additional_forward_args=attention_mask,
-                n_steps=100,
+                n_steps=1000,
                 return_convergence_delta=True,
             )
         else:
