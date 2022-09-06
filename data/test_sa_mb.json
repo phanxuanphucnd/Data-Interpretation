@@ -1,0 +1,62 @@
+{
+    "document": {
+        "analyser_id": "62565ad56d76796c0c391bcb",
+        "content": "QC_mb_sentiment_report.csv",
+        "create_time": 1653103209,
+        "id": "62885a696d76796c0c3a550c",
+        "language": "vi",
+        "polarity": "",
+        "sentence_ids": [],
+        "sentences": [
+            {
+                "analyser_id": "62565ad56d76796c0c391bcb",
+                "content": "Là 1ngân hàng của quân đội mà cái app thì quá tệ , hết treo rồi lại ko thể hoạt động , thật hối hận khi sử dụng MB",
+                "language": "vi",
+                "polarity": null,
+                "public_id": "MB_3_9208",
+                "tags": [
+                    {
+                        "analyser_id": "62565ad56d76796c0c391bcb",
+                        "attribute": "GENERAL",
+                        "end_offset": 59,
+                        "entity": "KHÁC",
+                        "polarity": "NEGATIVE",
+                        "start_offset": 55,
+                        "target": "treo"
+                    },
+                    {
+                        "analyser_id": "62565ad56d76796c0c391bcb",
+                        "attribute": "GENERAL",
+                        "end_offset": 48,
+                        "entity": "ĐÁNH_GIÁ_CHUNG",
+                        "polarity": "NEGATIVE",
+                        "start_offset": 42,
+                        "target": "quá tệ"
+                    }
+                ],
+                "capu_process": "Là 1ngân hàng của quân đội mà cái App thì quá tệ, hết treo rồi lại ko thể hoạt động. Thật hối hận khi sử dụng MB."
+            },
+            {
+                "analyser_id": "62565ad56d76796c0c391bcb",
+                "content": "Đăng kí tk không được",
+                "language": "vi",
+                "polarity": null,
+                "public_id": "MB_3_9206",
+                "tags": [
+                    {
+                        "analyser_id": "62565ad56d76796c0c391bcb",
+                        "attribute": "GENERAL",
+                        "end_offset": 21,
+                        "entity": "ĐĂNG_KÝ_TÀI_KHOẢN_ONLINE",
+                        "polarity": "NEGATIVE",
+                        "start_offset": 0,
+                        "target": "Đăng kí tk không được"
+                    }
+                ],
+                "capu_process": "Đăng kí TK không được."
+            }
+        ],
+        "title": "QC_mb_sentiment_report.csv",
+        "update_time": 1653103209
+    }
+}

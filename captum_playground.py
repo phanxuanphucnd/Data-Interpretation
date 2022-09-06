@@ -137,7 +137,7 @@ class CaptumInterpreter(object):
         tags = instance['tags']
 
         if not tags:
-            return 'NEGATIVE', []
+            return 'NEGATIVE', [], []
 
         count_dict = {
             'NEGATIVE': 0,
@@ -148,19 +148,29 @@ class CaptumInterpreter(object):
         idx_opi_terms = []
 
         char_idx2token_idx = get_char_idx2token_idx(instance['content'].split())
-        # print(char_idx2token_idx)
 
-        for tag in tags:
-            if tag['polarity'] == 'NEUTRAL':
-                count_dict['POSITIVE'] += 1
-            else:
-                count_dict[tag['polarity']] += 1
+        try:
+            for tag in tags:
+                if tag['polarity'] == 'NEUTRAL':
+                    count_dict['POSITIVE'] += 1
+                else:
+                    count_dict[tag['polarity']] += 1
 
-            opi_terms.append(tag['target'])
+                opi_terms.append(tag['target'])
 
-            start_token_idx = char_idx2token_idx[tag['start_offset']]
-            end_token_idx = char_idx2token_idx[tag['start_offset'] + len(tag['target']) - 1]
-            idx_opi_terms.append((start_token_idx, end_token_idx))
+                try:
+                    start_token_idx = char_idx2token_idx[tag['start_offset']]
+                except:
+                    start_token_idx = char_idx2token_idx[tag['start_offset'] - 1]
+
+                try:
+                    end_token_idx = char_idx2token_idx[tag['start_offset'] + len(tag['target']) - 1]
+                except:
+                    end_token_idx = char_idx2token_idx[tag['start_offset'] + len(tag['target']) - 2]
+
+                idx_opi_terms.append((start_token_idx, end_token_idx))
+        except:
+            raise ValueError(f"Error convert token index in sample: {instance}")
 
         returned_value = max(count_dict.items(), key=operator.itemgetter(1))[0]
 
@@ -175,10 +185,7 @@ class CaptumInterpreter(object):
 
         sentences = data['document']['sentences']
         for sent in tqdm(sentences, desc="Processing"):
-            try:
-                label, idx_term, term = self.get_label(sent)
-            except:
-                print(sent)
+            label, idx_term, term = self.get_label(sent)
             text = sent['content'].lower()
             term = [t.lower() for t in term]
             texts.append(text)
@@ -227,9 +234,6 @@ class CaptumInterpreter(object):
 
         idx_interpreted, text_interpreted = self.get_output_from_interpreted(attributions, deltas, texts, threshold)
 
-        print(idx_interpreted)
-        print(idx_terms)
-
         for i in tqdm(range(len(attributions)), desc="Calculate scores"):
             unique_union = []
             interpreted = []
@@ -250,6 +254,33 @@ class CaptumInterpreter(object):
             scores.append(len(max_intersection) / len(list(set(unique_union))))
 
         return np.mean(scores), scores
+
+    def test_times(self, json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        attributions, deltas = [], []
+        texts, terms, idx_terms = [], [], []
+
+        sentences = data['document']['sentences']
+        for sent in tqdm(sentences, desc="Processing"):
+            label, idx_term, term = self.get_label(sent)
+            text = sent['content'].lower()
+            term = [t.lower() for t in term]
+            texts.append(text)
+            terms.append(term)
+            idx_terms.append((idx_term))
+
+            interpreted_sample = self.interpret_sample(
+                text=text,
+                max_length=200,
+                label=label,
+                target=LABEL2ID[label],
+            )
+            attributions.append(interpreted_sample[0])
+            deltas.append(interpreted_sample[1])
+
+        return (attributions, deltas), texts, (idx_terms, terms)
 
     def visualize_samples(self, text, max_length: int = 200, label: int = 0, target: int = 0):
         if isinstance(text, list):
@@ -283,7 +314,9 @@ if __name__ == '__main__':
         device=args.device
     )
 
-    (attributions, deltas), texts, (idx_terms, terms) = captum_interpreter.interpret_from_json(json_path='data/data_merged_0308_fixed_capu_fixed_syserr_2.json')
+    (attributions, deltas), texts, (idx_terms, terms) = captum_interpreter.interpret_from_json(
+        json_path='data/QC_mb_sentiment_report.json'
+    )
 
     score, list_score = captum_interpreter.calculate_scores(
         attributions=attributions,
