@@ -21,3 +21,16 @@ def max_sublists(list1, list2):
     else:
         max_len = max(len(subl) for subl in subls)
         return [subl for subl in subls if len(subl)==max_len]
+
+def get_char_idx2token_idx(tokens):
+    char_idx2token_idx = {}
+
+    char_idx = 0
+    for i, token in enumerate(tokens):
+        for j in range(len(token)):
+            char_idx2token_idx[char_idx] = i
+            char_idx += 1
+
+        char_idx += 1
+
+    return char_idx2token_idx

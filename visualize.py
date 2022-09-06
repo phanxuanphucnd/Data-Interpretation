@@ -5,6 +5,7 @@
 import torch
 import numpy as np
 from typing import Iterable
+from constants import ID2LABEL, LABEL2ID
 try:
     from IPython.display import HTML, display
     HAS_IPYTHON = True
@@ -59,12 +60,7 @@ class CaptumVisualizer:
 
         text = [self.tokenizer.decode(i) for i in text[0]]
 
-        label_dict = {
-            0: 'NEG',
-            1: 'POS',
-            2: 'NEU'
-        }
-
+        label_dict = ID2LABEL
         # storing couple samples in an array for visualization purposes
         ''' "word_attributions",
             "pred_prob",

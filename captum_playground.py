@@ -17,12 +17,13 @@ from captum.attr import (
     LayerDeepLift,
     LayerGradientXActivation,
     LayerFeatureAblation,
-    TokenReferenceBase
+    TokenReferenceBase,
+    visualization
 )
 from models import RobertaMLP
-from utils import max_sublists
-from constants import ID2LABEL, LABEL2ID
 from visualize import CaptumVisualizer
+from constants import ID2LABEL, LABEL2ID
+from utils import max_sublists, get_char_idx2token_idx
 
 methods_register = {
     'LayerIntergratedGradients': ['lig', 'LayerIntergratedGradients', 'Layer Intergrated Gradients'],
@@ -143,33 +144,46 @@ class CaptumInterpreter(object):
             'POSITIVE': 0,
             'NEUTRAL': 0
         }
-        opinion_terms = []
+        opi_terms = []
+        idx_opi_terms = []
+
+        char_idx2token_idx = get_char_idx2token_idx(instance['content'].split())
+        # print(char_idx2token_idx)
+
         for tag in tags:
             if tag['polarity'] == 'NEUTRAL':
                 count_dict['POSITIVE'] += 1
             else:
                 count_dict[tag['polarity']] += 1
 
-            opinion_terms.append(tag['target'])
+            opi_terms.append(tag['target'])
+
+            start_token_idx = char_idx2token_idx[tag['start_offset']]
+            end_token_idx = char_idx2token_idx[tag['start_offset'] + len(tag['target']) - 1]
+            idx_opi_terms.append((start_token_idx, end_token_idx))
 
         returned_value = max(count_dict.items(), key=operator.itemgetter(1))[0]
 
-        return returned_value, opinion_terms
+        return returned_value, idx_opi_terms, opi_terms
 
     def interpret_from_json(self, json_path):
         with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         attributions, deltas = [], []
-        texts, terms = [], []
+        texts, terms, idx_terms = [], [], []
 
         sentences = data['document']['sentences']
         for sent in tqdm(sentences, desc="Processing"):
-            label, term = self.get_label(sent)
+            try:
+                label, idx_term, term = self.get_label(sent)
+            except:
+                print(sent)
             text = sent['content'].lower()
             term = [t.lower() for t in term]
             texts.append(text)
             terms.append(term)
+            idx_terms.append((idx_term))
 
             interpreted_sample = self.interpret_sample(
                 text=text,
@@ -180,42 +194,62 @@ class CaptumInterpreter(object):
             attributions.append(interpreted_sample[0])
             deltas.append(interpreted_sample[1])
 
-        for i in range(len(attributions)):
-            print(f"attributions: {attributions}\n")
-            print(f"texts: {texts}\n")
+        return (attributions, deltas), texts, (idx_terms, terms)
 
-        return (attributions, deltas), texts, terms
-
-    def get_text_from_interpreted(self, attributions, deltas, texts, threshold: float = 0.4):
+    def get_output_from_interpreted(self, attributions, deltas, texts, threshold: float = 0.4):
         text_spans = []
         idx_spans = []
 
         for i in range(len(attributions)):
-            tmp_span = []
+            tmp_idx_span = []
+            tmp_text_span = []
             pattern_found = []
-            tmp_texts = texts[i].split()
+            tmp_text = texts[i].split()
             for j in range(len(attributions[i])):
                 if attributions[i][j] >= threshold:
                     pattern_found.append(j)
                 elif len(pattern_found) != 0:
-                    tmp_span.append((pattern_found[0], pattern_found[-1]))
+                    tmp_idx_span.append((pattern_found[0], pattern_found[-1]))
+                    tmp_text_span.append(' '.join(tmp_text[pattern_found[0]: pattern_found[-1] + 1]))
                     pattern_found = []
 
             if len(pattern_found) != 0:
-                tmp_span.append((pattern_found[0], len(attributions[i]) - 1))
+                tmp_idx_span.append((pattern_found[0], len(attributions[i]) - 1))
+                tmp_text_span.append(' '.join(tmp_text[pattern_found[0]: len(attributions[i])]))
 
-            idx_spans.append(tmp_span)
+            idx_spans.append(tmp_idx_span)
+            text_spans.append(tmp_text_span)
 
-        return idx_spans
+        return idx_spans, text_spans
 
-    def calculate_scores(self, attributions, deltas, texts, terms, threshold: float = 0.4):
+    def calculate_scores(self, attributions, deltas, texts, idx_terms, terms, threshold: float = 0.0):
         scores = []
 
-        truth_labels = self.get_text_from_interpreted(attributions, deltas, texts, threshold)
+        idx_interpreted, text_interpreted = self.get_output_from_interpreted(attributions, deltas, texts, threshold)
 
-        print(truth_labels)
+        print(idx_interpreted)
+        print(idx_terms)
 
-        return []
+        for i in tqdm(range(len(attributions)), desc="Calculate scores"):
+            unique_union = []
+            interpreted = []
+            target = []
+
+            for j in range(len(idx_interpreted[i])):
+                idx = idx_interpreted[i][j]
+                interpreted.extend(list(range(idx[0], idx[1] + 1)))
+
+            for j in range(len(idx_terms[i])):
+                idx = idx_terms[i][j]
+                target.extend(list(range(idx[0], idx[1] + 1)))
+
+            unique_union.extend(interpreted)
+            unique_union.extend(target)
+
+            max_intersection = list(set(interpreted) & set(target))
+            scores.append(len(max_intersection) / len(list(set(unique_union))))
+
+        return np.mean(scores), scores
 
     def visualize_samples(self, text, max_length: int = 200, label: int = 0, target: int = 0):
         if isinstance(text, list):
@@ -228,8 +262,7 @@ class CaptumInterpreter(object):
             self.captum_visualizer.add_attributions_to_visualizer(
                 attribution, rtext, pred_prob, pred, label, target, delta, self.visual_data_record)
 
-        self.captum_visualizer.visualize_text(self.visual_data_record)
-
+        visualization.visualize_text(self.visual_data_record)
 
 
 if __name__ == '__main__':
@@ -243,20 +276,24 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     captum_interpreter = CaptumInterpreter(
-        method='LayerDeepLift',
-        model_path='models/polarity.pt',
+        method=args.type,
+        model_path='models/sa_head.pt',
         pretrained_name_or_path='models/bdi-roberta',
         tokenizer_path='models/bdi-tokenizer',
-        device='cpu'
+        device=args.device
     )
 
-    (attributions, deltas), texts, terms = captum_interpreter.interpret_from_json(json_path='data/test_sa_mb.json')
+    (attributions, deltas), texts, (idx_terms, terms) = captum_interpreter.interpret_from_json(json_path='data/data_merged_0308_fixed_capu_fixed_syserr_2.json')
 
-    score = captum_interpreter.calculate_scores(
+    score, list_score = captum_interpreter.calculate_scores(
         attributions=attributions,
         deltas=deltas,
         texts=texts,
         terms=terms,
-        threshold=0.2
+        idx_terms=idx_terms,
+        threshold=0.0
     )
+
+    print(score)
+    print(list_score)
 
