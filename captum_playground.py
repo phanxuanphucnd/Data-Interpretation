@@ -180,6 +180,7 @@ class CaptumInterpreter(object):
         with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        times = []
         attributions, deltas = [], []
         texts, terms, idx_terms = [], [], []
 
@@ -192,14 +193,19 @@ class CaptumInterpreter(object):
             terms.append(term)
             idx_terms.append((idx_term))
 
+            now = datetime.now()
             interpreted_sample = self.interpret_sample(
                 text=text,
                 max_length=200,
                 label=label,
                 target=LABEL2ID[label],
             )
+            times.append(datetime.now() - now)
+
             attributions.append(interpreted_sample[0])
             deltas.append(interpreted_sample[1])
+
+        print(f"Evarage run time: {np.mean(times)}")
 
         return (attributions, deltas), texts, (idx_terms, terms)
 
@@ -251,36 +257,34 @@ class CaptumInterpreter(object):
             unique_union.extend(target)
 
             max_intersection = list(set(interpreted) & set(target))
-            scores.append(len(max_intersection) / len(list(set(unique_union))))
+
+            if len(target) > 0:
+                scores.append(len(max_intersection) / len(list(set(unique_union))))
 
         return np.mean(scores), scores
 
-    def test_times(self, json_path):
+    def test_runtime(self, json_path):
         with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        attributions, deltas = [], []
-        texts, terms, idx_terms = [], [], []
-
+        times = []
         sentences = data['document']['sentences']
-        for sent in tqdm(sentences, desc="Processing"):
-            label, idx_term, term = self.get_label(sent)
+        for sent in tqdm(sentences, desc="Test runtime"):
+            label, _, _ = self.get_label(sent)
             text = sent['content'].lower()
-            term = [t.lower() for t in term]
-            texts.append(text)
-            terms.append(term)
-            idx_terms.append((idx_term))
 
+            now = datetime.now()
             interpreted_sample = self.interpret_sample(
                 text=text,
                 max_length=200,
                 label=label,
                 target=LABEL2ID[label],
             )
-            attributions.append(interpreted_sample[0])
-            deltas.append(interpreted_sample[1])
+            times.append(datetime.now() - now)
 
-        return (attributions, deltas), texts, (idx_terms, terms)
+        print(f"Evarage run time: {np.mean(times)}")
+
+        return np.mean(times)
 
     def visualize_samples(self, text, max_length: int = 200, label: int = 0, target: int = 0):
         if isinstance(text, list):
@@ -303,6 +307,8 @@ if __name__ == '__main__':
                         help='Type of explanations algorithm')
     parser.add_argument('--device', default='cpu', type=str,
                         help='Device')
+    parser.add_argument('--test_runtime', action='store_true',
+                        help='Test runtime')
 
     args = parser.parse_args()
 
@@ -314,19 +320,18 @@ if __name__ == '__main__':
         device=args.device
     )
 
-    (attributions, deltas), texts, (idx_terms, terms) = captum_interpreter.interpret_from_json(
-        json_path='data/QC_mb_sentiment_report.json'
-    )
-
-    score, list_score = captum_interpreter.calculate_scores(
-        attributions=attributions,
-        deltas=deltas,
-        texts=texts,
-        terms=terms,
-        idx_terms=idx_terms,
-        threshold=0.0
-    )
-
-    print(score)
-    print(list_score)
-
+    if not args.test_runtime:
+        (attributions, deltas), texts, (idx_terms, terms) = captum_interpreter.interpret_from_json(
+            json_path='data/QC_mb_sentiment_report.json'
+        )
+        score, list_score = captum_interpreter.calculate_scores(
+            attributions=attributions,
+            deltas=deltas,
+            texts=texts,
+            terms=terms,
+            idx_terms=idx_terms,
+            threshold=0.0
+        )
+        print(score)
+    else:
+        time = captum_interpreter.test_runtime(json_path='data/QC_mb_sentiment_report.json')
