@@ -80,7 +80,6 @@ class CaptumVisualizer:
 
         text = [text[i] for i in keep_id]
 
-        print(f"attributions: {attributions} \n text: {text}")
         vis_data_records.append(
             VisualizationDataRecord(
                 attributions,
@@ -149,10 +148,12 @@ class CaptumVisualizer:
 
         dom.append("".join(rows))
         dom.append("</table>")
+        raw_html = "".join(dom)
         html = HTML("".join(dom))
         display(html)
+        # file.visualize(filename='output.png')
 
-        return html
+        return raw_html
     
     def format_classname(self, classname):
         return '<td><text style="padding-right:2em"><b>{}</b></text></td>'.format(classname)

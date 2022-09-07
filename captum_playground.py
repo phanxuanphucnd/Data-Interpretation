@@ -107,7 +107,7 @@ class CaptumInterpreter(object):
                 baselines=reference_indices,
                 target=target,
                 additional_forward_args=attention_mask,
-                n_steps=100,
+                n_steps=200,
                 return_convergence_delta=True,
             )
         elif self.method in methods_register['LayerDeepLift']:
@@ -145,7 +145,7 @@ class CaptumInterpreter(object):
         tags = instance['tags']
 
         if not tags:
-            return 'NEGATIVE', [], []
+            return None, None, None
 
         count_dict = {
             'NEGATIVE': 0,
@@ -159,7 +159,9 @@ class CaptumInterpreter(object):
 
         try:
             for tag in tags:
-                if tag['polarity'] == 'NEUTRAL':
+                if not tag['polarity']:
+                  return None, None, None
+                elif tag['polarity'] == 'NEUTRAL':
                     count_dict['POSITIVE'] += 1
                 else:
                     count_dict[tag['polarity']] += 1
@@ -195,23 +197,24 @@ class CaptumInterpreter(object):
         sentences = data['document']['sentences']
         for sent in tqdm(sentences, desc="Processing"):
             label, idx_term, term = self.get_label(sent)
-            text = sent['content'].lower()
-            term = [t.lower() for t in term]
-            texts.append(text)
-            terms.append(term)
-            idx_terms.append((idx_term))
+            if label and idx_term and term:
+                text = sent['content'].lower()
+                term = [t.lower() for t in term]
+                texts.append(text)
+                terms.append(term)
+                idx_terms.append((idx_term))
 
-            now = datetime.now()
-            interpreted_sample = self.interpret_sample(
-                text=text,
-                max_length=200,
-                label=label,
-                target=LABEL2ID[label],
-            )
-            times.append(datetime.now() - now)
+                now = datetime.now()
+                interpreted_sample = self.interpret_sample(
+                    text=text,
+                    max_length=200,
+                    label=label,
+                    target=LABEL2ID[label],
+                )
+                times.append(datetime.now() - now)
 
-            attributions.append(interpreted_sample[0])
-            deltas.append(interpreted_sample[1])
+                attributions.append(interpreted_sample[0])
+                deltas.append(interpreted_sample[1])
 
         print(f"Evarage run time: {np.mean(times)}")
 
@@ -305,7 +308,10 @@ class CaptumInterpreter(object):
             self.captum_visualizer.add_attributions_to_visualizer(
                 attribution, rtext, pred_prob, pred, label, target, delta, self.visual_data_record)
 
-        visualization.visualize_text(self.visual_data_record)
+        # visualization.visualize_text(self.visual_data_record)
+        html = self.captum_visualizer.visualize_text(self.visual_data_record)
+
+        return html
 
 
 if __name__ == '__main__':
@@ -338,7 +344,7 @@ if __name__ == '__main__':
             texts=texts,
             terms=terms,
             idx_terms=idx_terms,
-            threshold=0.0
+            threshold=0.1
         )
         print(score)
     else:
