@@ -126,7 +126,6 @@ class CaptumInterpreter(object):
             )
             delta = None
 
-
         attribution = attribution.sum(dim=2).squeeze(0)
         attribution = attribution / torch.norm(attribution)
         attribution = attribution.cpu().detach().numpy()
@@ -160,7 +159,7 @@ class CaptumInterpreter(object):
         try:
             for tag in tags:
                 if not tag['polarity']:
-                  return None, None, None
+                    return None, None, None
                 elif tag['polarity'] == 'NEUTRAL':
                     count_dict['POSITIVE'] += 1
                 else:
@@ -336,7 +335,7 @@ if __name__ == '__main__':
 
     if not args.test_runtime:
         (attributions, deltas), texts, (idx_terms, terms) = captum_interpreter.interpret_from_json(
-            json_path='data/QC_mb_sentiment_report.json'
+            json_path='data/subdata_10.json'
         )
         score, list_score = captum_interpreter.calculate_scores(
             attributions=attributions,
@@ -344,7 +343,7 @@ if __name__ == '__main__':
             texts=texts,
             terms=terms,
             idx_terms=idx_terms,
-            threshold=0.1
+            threshold=0.0
         )
         print(score)
     else:
