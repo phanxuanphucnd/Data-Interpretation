@@ -1,10 +1,5 @@
 # Data-Interpretation
 
----
-id: algorithms_comparison_matrix
-title: Algorithm Comparison Matrix
----
-
 # **Attribution Algorithm Comparison Matrix**
 
 Please, scroll to the right for more details.
