@@ -34,7 +34,6 @@
                         "target": "quá tệ"
                     }
                 ],
-                "capu_process": "Là 1ngân hàng của quân đội mà cái App thì quá tệ, hết treo rồi lại ko thể hoạt động. Thật hối hận khi sử dụng MB."
             },
             {
                 "analyser_id": "62565ad56d76796c0c391bcb",
@@ -53,7 +52,6 @@
                         "target": "Đăng kí tk không được"
                     }
                 ],
-                "capu_process": "Đăng kí TK không được."
             }
         ],
         "title": "QC_mb_sentiment_report.csv",
